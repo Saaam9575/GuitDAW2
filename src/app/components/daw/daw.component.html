@@ -144,9 +144,7 @@
                         "
                       ></nz-slider>
                       <span class="param-value">{{
-                        param.type === "slider"
-                          ? (param.value | number : "1.2-2")
-                          : param.value
+                        formatParamValue(param.value)
                       }}</span>
                     </div>
                     <!-- Type Toggle -->

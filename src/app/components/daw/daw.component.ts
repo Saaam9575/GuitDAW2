@@ -383,6 +383,20 @@ export class DawComponent implements OnInit, OnDestroy {
     }
   }
 
+  formatParamValue(value: number | string | boolean): string {
+    if (value === null || value === undefined) {
+      return '';
+    }
+
+    if (typeof value === 'number') {
+      // Formater les nombres avec 2 décimales
+      return value.toFixed(2);
+    }
+
+    // Convertir les booléens et les chaînes en texte
+    return String(value);
+  }
+
   getEffectName(type: string): string {
     switch (type) {
       case 'delay':
