@@ -1,0 +1,55 @@
+<div class="tab-search-container">
+  <nz-input-group nzSearch [nzAddOnAfter]="searchButton" class="search-input">
+    <input
+      type="text"
+      nz-input
+      placeholder="Rechercher un morceau ou un artiste..."
+      [(ngModel)]="searchQuery"
+      (keyup.enter)="searchTabs()"
+    />
+  </nz-input-group>
+  <ng-template #searchButton>
+    <button
+      nz-button
+      nzType="primary"
+      nzSearch
+      [nzLoading]="isLoading"
+      (click)="searchTabs()"
+    >
+      <span nz-icon nzType="search"></span>
+    </button>
+  </ng-template>
+
+  <nz-list nzBordered nzHeader="Résultats de la recherche" class="results-list">
+    <nz-list-item *ngIf="isLoading">
+      <nz-skeleton [nzActive]="true"></nz-skeleton>
+    </nz-list-item>
+    <nz-list-item *ngIf="!isLoading && searchResults.length === 0">
+      Aucun résultat trouvé.
+    </nz-list-item>
+    <nz-list-item
+      *ngFor="let result of searchResults"
+      (click)="selectTab(result)"
+      class="result-item"
+    >
+      <nz-list-item-meta
+        [nzTitle]="resultTitle"
+        [nzDescription]="result.source"
+      >
+        <ng-template #resultTitle>
+          <a>{{ result.title }}</a>
+        </ng-template>
+      </nz-list-item-meta>
+      <span
+        nz-icon
+        nzType="right"
+        *ngIf="result.source !== 'Local File (Mock)'"
+      ></span>
+      <span
+        nz-icon
+        nzType="play-circle"
+        *ngIf="result.source === 'Local File (Mock)'"
+      ></span>
+    </nz-list-item>
+  </nz-list>
+</div>

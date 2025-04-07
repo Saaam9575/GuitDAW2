@@ -1,0 +1,33 @@
+<nz-card
+  [nzTitle]="tabTitle"
+  [nzExtra]="playerControls"
+  class="tab-viewer-card"
+>
+  <nz-spin [nzSpinning]="isLoading" nzTip="Chargement de la tablature...">
+    <div *ngIf="errorLoading" class="error-message">
+      <span
+        nz-icon
+        nzType="close-circle"
+        nzTheme="twotone"
+        nzTwotoneColor="#f5222d"
+      ></span>
+      Impossible de charger la tablature.
+    </div>
+    <div #alphaTabContainer class="alphatab-container"></div>
+  </nz-spin>
+</nz-card>
+
+<ng-template #playerControls>
+  <div class="player-controls" *ngIf="!isLoading && !errorLoading">
+    <button nz-button nzShape="circle" (click)="playPause()">
+      <span nz-icon nzType="play-circle"></span>
+    </button>
+    <button nz-button nzShape="circle" (click)="stop()">
+      <span nz-icon nzType="stop"></span>
+    </button>
+    <button nz-button nzShape="circle" (click)="print()">
+      <span nz-icon nzType="printer"></span>
+    </button>
+    <!-- D'autres contrôles alphaTab peuvent être ajoutés ici (zoom, layout, etc.) -->
+  </div>
+</ng-template>

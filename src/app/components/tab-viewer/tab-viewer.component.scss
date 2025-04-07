@@ -1,0 +1,65 @@
+.tab-viewer-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: #3d3d3d; // Assorti au thème sombre
+  border-color: #4d4d4d;
+
+  ::ng-deep .ant-card-head {
+    background-color: #4d4d4d;
+    border-bottom: 1px solid #1e1e1e;
+    color: #fff;
+    font-weight: bold;
+  }
+
+  ::ng-deep .ant-card-extra {
+    padding: 0; // Ajuster selon le besoin
+  }
+
+  ::ng-deep .ant-card-body {
+    flex: 1;
+    padding: 0; // alphaTab gère son propre padding
+    overflow: hidden; // Empêche le débordement
+    position: relative; // Pour le positionnement du spinner
+  }
+
+  nz-spin {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+.alphatab-container {
+  height: 100%;
+  overflow-y: auto; // Permet le défilement vertical de la tablature
+  // Appliquer un style pour correspondre au thème sombre si nécessaire
+  // alphaTab a ses propres styles, mais on peut les surcharger
+  // Exemple : .at-surface { background-color: #2d2d2d; }
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #f5222d;
+  font-size: 16px;
+  padding: 20px;
+}
+
+.player-controls {
+  display: flex;
+  gap: 8px;
+
+  button {
+    background: transparent;
+    border: none;
+    color: #ccc;
+
+    &:hover {
+      color: #fff;
+    }
+  }
+}

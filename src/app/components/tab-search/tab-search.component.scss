@@ -1,0 +1,54 @@
+.tab-search-container {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  overflow-y: auto; // Pour le défilement si les résultats sont nombreux
+}
+
+.search-input {
+  margin-bottom: 10px;
+}
+
+.results-list {
+  flex: 1; // Prend l'espace restant
+  background-color: #3d3d3d; // Assorti au thème sombre
+  border-color: #4d4d4d;
+  color: #fff;
+
+  ::ng-deep .ant-list-header {
+    background-color: #4d4d4d;
+    border-bottom: 1px solid #1e1e1e;
+    color: #fff;
+    font-weight: bold;
+  }
+
+  ::ng-deep .ant-list-item {
+    border-color: #4d4d4d;
+    color: #ccc;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+
+    &:hover {
+      background-color: #4d4d4d;
+    }
+
+    .ant-list-item-meta-title a {
+      color: #fff;
+      font-weight: 500;
+      &:hover {
+        color: #1890ff; // Couleur d'accentuation Ant Design
+      }
+    }
+
+    .ant-list-item-meta-description {
+      color: #888;
+    }
+
+    [nz-icon] {
+      font-size: 16px;
+      color: #888;
+    }
+  }
+}
