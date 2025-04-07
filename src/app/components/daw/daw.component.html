@@ -96,12 +96,84 @@
               class="effect-list"
               (cdkDropListDropped)="onDrop($event)"
             >
-              <div class="effect-box" *ngFor="let effect of effects" cdkDrag>
-                <span nz-icon nzType="drag" class="drag-handle"></span>
-                <span class="effect-name">{{ effect }}</span>
-                <button nz-button nzType="text" (click)="removeEffect(effect)">
-                  <span nz-icon nzType="close"></span>
-                </button>
+              <div
+                class="effect-box"
+                *ngFor="let effectInfo of effectInfos"
+                cdkDrag
+              >
+                <div class="effect-header">
+                  <span nz-icon nzType="drag" class="drag-handle"></span>
+                  <span class="effect-name">{{ effectInfo.name }}</span>
+                  <div class="effect-actions">
+                    <button
+                      nz-button
+                      nzType="text"
+                      (click)="toggleEffectPanel(effectInfo.id)"
+                      class="effect-toggle-btn"
+                    >
+                      <span
+                        nz-icon
+                        [nzType]="effectInfo.isOpen ? 'up' : 'down'"
+                      ></span>
+                    </button>
+                    <button
+                      nz-button
+                      nzType="text"
+                      (click)="removeEffect(effectInfo.id)"
+                    >
+                      <span nz-icon nzType="close"></span>
+                    </button>
+                  </div>
+                </div>
+                <!-- Panneau de paramètres d'effets -->
+                <div class="effect-params" *ngIf="effectInfo.isOpen">
+                  <div
+                    class="param-item"
+                    *ngFor="let param of effectInfo.params"
+                  >
+                    <label class="param-label">{{ param.name }}</label>
+                    <!-- Type Slider -->
+                    <div *ngIf="param.type === 'slider'" class="param-control">
+                      <nz-slider
+                        [nzMin]="param.min"
+                        [nzMax]="param.max"
+                        [nzStep]="param.step"
+                        [ngModel]="param.value"
+                        (ngModelChange)="
+                          updateEffectParam(effectInfo, param, $event)
+                        "
+                      ></nz-slider>
+                      <span class="param-value">{{
+                        param.value | number : "1.2-2"
+                      }}</span>
+                    </div>
+                    <!-- Type Toggle -->
+                    <div *ngIf="param.type === 'toggle'" class="param-control">
+                      <nz-switch
+                        [ngModel]="param.value"
+                        (ngModelChange)="
+                          updateEffectParam(effectInfo, param, $event)
+                        "
+                      ></nz-switch>
+                    </div>
+                    <!-- Type Select -->
+                    <div *ngIf="param.type === 'select'" class="param-control">
+                      <nz-select
+                        style="width: 100%"
+                        [ngModel]="param.value"
+                        (ngModelChange)="
+                          updateEffectParam(effectInfo, param, $event)
+                        "
+                      >
+                        <nz-option
+                          *ngFor="let option of param.options"
+                          [nzValue]="option.value"
+                          [nzLabel]="option.label"
+                        ></nz-option>
+                      </nz-select>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

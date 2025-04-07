@@ -14,6 +14,7 @@ export class GuitarAudioService implements OnDestroy {
   private input: Tone.UserMedia | null = null;
   private effects: Map<string, Tone.ToneAudioNode> = new Map();
   private effectChain: Tone.ToneAudioNode[] = [];
+  private effectIds: string[] = []; // Liste ordonnée des IDs d'effets
   private isInitialized = false;
   private isInputOpen = false;
 
@@ -177,19 +178,24 @@ export class GuitarAudioService implements OnDestroy {
     // Déconnecter l'entrée de tout pour éviter les connexions multiples
     this.input.disconnect();
 
+    // Reconstruire la chaîne d'effets basée sur l'ordre actuel des IDs
+    this.effectChain = [];
+    for (const id of this.effectIds) {
+      const effect = this.effects.get(id);
+      if (effect) {
+        this.effectChain.push(effect);
+      }
+    }
+
     let current: Tone.ToneAudioNode = this.input;
     if (this.effectChain.length === 0) {
       console.log("Connexion directe de l'entrée à la destination.");
       current.toDestination();
     } else {
-      console.log(
-        "Construction de la chaîne d'effets:",
-        this.effectChain.map((e) => e.name)
-      );
+      console.log("Construction de la chaîne d'effets:", this.effectIds);
       this.effectChain.forEach((effect) => {
         // S'assurer que les anciens effets sont déconnectés avant de reconnecter
-        // (peut être redondant si rebuildChain est toujours appelée correctement)
-        // effect.disconnect();
+        effect.disconnect();
         console.log(`Connexion ${current.name} -> ${effect.name}`);
         current.connect(effect);
         current = effect;
@@ -200,68 +206,71 @@ export class GuitarAudioService implements OnDestroy {
     return current; // Retourne le dernier nœud de la chaîne (ou l'entrée si vide)
   }
 
-  addEffect(name: string, effectInstance: Tone.ToneAudioNode) {
-    if (this.effects.has(name)) {
-      console.warn(`L'effet ${name} existe déjà.`);
+  addEffect(id: string, effectInstance: Tone.ToneAudioNode) {
+    if (this.effects.has(id)) {
+      console.warn(`L'effet avec ID ${id} existe déjà.`);
       return; // Éviter les doublons
     }
-    this.effects.set(name, effectInstance);
-    this.effectChain.push(effectInstance);
+    this.effects.set(id, effectInstance);
+    this.effectIds.push(id);
     this.rebuildChain();
   }
 
-  removeEffect(name: string) {
-    const effectInstance = this.effects.get(name);
+  removeEffect(id: string) {
+    const effectInstance = this.effects.get(id);
     if (effectInstance) {
-      const index = this.effectChain.indexOf(effectInstance);
+      const index = this.effectIds.indexOf(id);
       if (index > -1) {
-        this.effectChain.splice(index, 1);
-        this.effects.delete(name);
+        this.effectIds.splice(index, 1);
+        this.effects.delete(id);
         // Disposer l'effet pour libérer les ressources audio
         try {
           effectInstance.disconnect();
           effectInstance.dispose();
-          console.log(`Effet ${name} supprimé et disposé.`);
+          console.log(`Effet ${id} supprimé et disposé.`);
         } catch (disposeError) {
           console.warn(
-            `Erreur lors de la disposition de l'effet ${name}:`,
+            `Erreur lors de la disposition de l'effet ${id}:`,
             disposeError
           );
         }
         this.rebuildChain();
       } else {
         console.warn(
-          `Effet ${name} trouvé dans la map mais pas dans la chaîne.`
+          `Effet ${id} trouvé dans la map mais pas dans la liste d'IDs.`
         );
         // Nettoyer la map par sécurité
-        this.effects.delete(name);
+        this.effects.delete(id);
       }
     } else {
-      console.warn(`Tentative de suppression d'un effet inexistant: ${name}`);
+      console.warn(`Tentative de suppression d'un effet inexistant: ${id}`);
     }
   }
 
   reorderEffects(newOrder: string[]) {
-    const newEffectChain: Tone.ToneAudioNode[] = [];
+    // Vérifier que tous les IDs existent
+    const validIds = newOrder.filter((id) => this.effects.has(id));
+
+    // Si la longueur est différente, il y a des IDs invalides
+    if (validIds.length !== newOrder.length) {
+      console.warn(
+        'Certains IDs dans newOrder ne correspondent pas à des effets existants'
+      );
+    }
+
+    // Si aucun ID valide, ne rien faire
+    if (validIds.length === 0) {
+      console.warn('Aucun ID valide fourni pour la réorganisation');
+      return;
+    }
+
+    // Vérifier s'il y a un changement réel dans l'ordre
     let changed = false;
-    if (newOrder.length !== this.effectChain.length) {
+    if (validIds.length !== this.effectIds.length) {
       changed = true;
-    }
-
-    for (const name of newOrder) {
-      const effect = this.effects.get(name);
-      if (effect) {
-        newEffectChain.push(effect);
-      } else {
-        console.error(`Effet ${name} non trouvé lors de la réorganisation.`);
-        // Que faire ? Reconstruire avec les effets valides ?
-      }
-    }
-
-    // Vérifier si l'ordre a réellement changé
-    if (!changed) {
-      for (let i = 0; i < newEffectChain.length; i++) {
-        if (newEffectChain[i] !== this.effectChain[i]) {
+    } else {
+      for (let i = 0; i < validIds.length; i++) {
+        if (validIds[i] !== this.effectIds[i]) {
           changed = true;
           break;
         }
@@ -269,8 +278,8 @@ export class GuitarAudioService implements OnDestroy {
     }
 
     if (changed) {
-      console.log("Réorganisation de la chaîne d'effets.");
-      this.effectChain = newEffectChain;
+      console.log("Réorganisation de la chaîne d'effets:", validIds);
+      this.effectIds = validIds;
       this.rebuildChain();
     } else {
       console.log("Aucun changement d'ordre détecté.");
@@ -301,6 +310,7 @@ export class GuitarAudioService implements OnDestroy {
     });
     this.effects.clear();
     this.effectChain = [];
+    this.effectIds = [];
     this.isInitialized = false;
   }
 }
