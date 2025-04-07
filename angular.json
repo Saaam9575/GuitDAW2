@@ -39,7 +39,6 @@
             ],
             "styles": [
               "node_modules/ng-zorro-antd/ng-zorro-antd.min.css",
-              "src/assets/alphatab/dist/alphaTab.css",
               "src/styles.scss"
             ],
             "scripts": []
@@ -108,7 +107,6 @@
             ],
             "styles": [
               "node_modules/ng-zorro-antd/ng-zorro-antd.min.css",
-              "src/assets/alphatab/dist/alphaTab.css",
               "src/styles.scss"
             ],
             "scripts": []
