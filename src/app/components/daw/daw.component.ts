@@ -95,8 +95,7 @@ export class DawComponent implements OnInit, OnDestroy {
   constructor(public guitarAudioService: GuitarAudioService) {}
 
   ngOnInit() {
-    this.initializeAudioService();
-
+    // Ne pas initialiser le service audio ici, attendre le clic sur le bouton "Démarrer Audio"
     this.subscriptions.push(
       this.guitarAudioService.availableDevices$.subscribe((devices) => {
         this.availableDevices = devices;
@@ -114,13 +113,20 @@ export class DawComponent implements OnInit, OnDestroy {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
   }
 
+  private initializeAudioService() {
+    if (!this.isInitialized && this.isAudioContextStarted) {
+      this.guitarAudioService.initialize();
+      this.isInitialized = true;
+    }
+  }
+
   async startAudioContext() {
     if (this.isAudioContextStarted) return;
     try {
       await Tone.start();
       console.log('AudioContext démarré avec succès.');
       this.isAudioContextStarted = true;
-      this.isInitialized = await this.guitarAudioService.initialize();
+      this.initializeAudioService();
       if (!this.isInitialized) {
         console.error("Échec de l'initialisation de GuitarAudioService.");
       }
@@ -340,9 +346,10 @@ export class DawComponent implements OnInit, OnDestroy {
           const reverbEffect = effectInfo.effect as Tone.Reverb;
           if (param.id === 'decay') {
             // La propriété decay n'est pas directement modifiable, on doit recréer l'effet
-            // Pour l'instant, on modifie juste wet
-            reverbEffect.wet.value =
-              param.id === 'wet' ? value : reverbEffect.wet.value;
+            // Pour l'instant, on ignore les mises à jour de decay mais on conserve le paramètre
+            console.log(
+              `Paramètre non modifiable à chaud: ${param.id}=${value}`
+            );
           } else if (param.id === 'wet') {
             reverbEffect.wet.value = value;
           }
