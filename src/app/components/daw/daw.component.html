@@ -19,13 +19,16 @@
           <button
             nz-button
             nzType="primary"
-            (click)="togglePlayback()"
             [disabled]="!isAudioContextStarted"
+            (click)="toggleAudioPlayback()"
+            class="control-button"
           >
             <span
               nz-icon
-              [nzType]="isPlaying ? 'pause-circle' : 'play-circle'"
+              [nzType]="isPlaying ? 'pause' : 'play-circle'"
+              nzTheme="outline"
             ></span>
+            {{ isPlaying ? "Pause" : "Lecture" }}
           </button>
           <button nz-button [disabled]="!isAudioContextStarted">
             <span nz-icon nzType="reload"></span>
@@ -41,7 +44,7 @@
           </button>
         </div>
         <div class="audio-meter">
-          <div class="meter-bar"></div>
+          <canvas #visualizer width="300" height="50"></canvas>
         </div>
       </div>
     </nz-header>
@@ -86,6 +89,60 @@
             >
               <span nz-icon nzType="line-chart"></span>
               EQ
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('pitchShifter')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="rise"></span>
+              Pitch Shifter
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('compressor')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="compress"></span>
+              Compresseur
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('phaser')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="swap"></span>
+              Phaser
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('flanger')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="sync"></span>
+              Flanger
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('fuzz')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="fire"></span>
+              Fuzz
+            </button>
+            <button
+              nz-button
+              (click)="addEffect('overdrive')"
+              class="effect-button"
+              [disabled]="!isAudioContextStarted"
+            >
+              <span nz-icon nzType="thunderbolt"></span>
+              Overdrive
             </button>
           </div>
 
@@ -207,18 +264,164 @@
             </div>
           </div>
 
-          <div class="external-apps tab-module">
+          <div class="presets-module">
             <nz-tabset>
-              <nz-tab nzTitle="Tablatures">
-                <div class="tab-content-wrapper">
-                  <app-tab-search
-                    (tabSelected)="loadSelectedTab($event)"
-                    class="tab-search-panel"
-                  ></app-tab-search>
-                  <app-tab-viewer
-                    [tabUrl]="selectedTabUrl"
-                    class="tab-viewer-panel"
-                  ></app-tab-viewer>
+              <nz-tab nzTitle="Presets">
+                <div class="presets-content">
+                  <!-- Formulaire d'ajout de preset -->
+                  <div class="add-preset-form">
+                    <nz-input-group [nzSuffix]="suffixButton">
+                      <input
+                        nz-input
+                        [(ngModel)]="newPresetName"
+                        placeholder="Nom du preset"
+                        [disabled]="
+                          !isAudioContextStarted || effectInfos.length === 0
+                        "
+                      />
+                    </nz-input-group>
+                    <ng-template #suffixButton>
+                      <button
+                        nz-button
+                        nzType="primary"
+                        (click)="savePreset()"
+                        [disabled]="
+                          !newPresetName.trim() ||
+                          !isAudioContextStarted ||
+                          effectInfos.length === 0
+                        "
+                      >
+                        <span nz-icon nzType="save"></span>
+                        Sauvegarder
+                      </button>
+                    </ng-template>
+                  </div>
+
+                  <!-- Liste des presets -->
+                  <div class="presets-list">
+                    <nz-card *ngFor="let preset of presets" class="preset-card">
+                      <div class="preset-header">
+                        <h3>{{ preset.name }}</h3>
+                        <div class="preset-actions">
+                          <button
+                            nz-button
+                            nzType="primary"
+                            (click)="loadPreset(preset)"
+                            [disabled]="!isAudioContextStarted"
+                          >
+                            <span nz-icon nzType="play-circle"></span>
+                            Charger
+                          </button>
+                          <button
+                            nz-button
+                            nzType="default"
+                            nzDanger
+                            (click)="deletePreset(preset)"
+                          >
+                            <span nz-icon nzType="delete"></span>
+                          </button>
+                        </div>
+                      </div>
+                      <div class="preset-info">
+                        <p>{{ preset.effects.length }} effet(s)</p>
+                        <div class="preset-effects-list">
+                          <nz-tag *ngFor="let effect of preset.effects">
+                            {{ getEffectName(effect.type) }}
+                          </nz-tag>
+                        </div>
+                      </div>
+                    </nz-card>
+
+                    <nz-empty
+                      *ngIf="presets.length === 0"
+                      [nzNotFoundContent]="'Aucun preset sauvegardé'"
+                      [nzNotFoundFooter]="footerTemplate"
+                    >
+                    </nz-empty>
+                    <ng-template #footerTemplate>
+                      <p>
+                        Ajoutez des effets et sauvegardez votre premier preset
+                      </p>
+                    </ng-template>
+                  </div>
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Mix">
+                <div class="mix-content">
+                  <nz-card>
+                    <h3>Mix Général</h3>
+                    <div class="mix-controls">
+                      <!-- Volume général -->
+                      <div class="control-group">
+                        <label>Volume</label>
+                        <nz-slider
+                          [nzMin]="-60"
+                          [nzMax]="0"
+                          [nzStep]="1"
+                          [(ngModel)]="masterVolume"
+                          (ngModelChange)="updateMasterVolume($event)"
+                          [disabled]="!isAudioContextStarted"
+                        ></nz-slider>
+                        <span class="value">{{ masterVolume }} dB</span>
+                      </div>
+
+                      <!-- Pan général -->
+                      <div class="control-group">
+                        <label>Balance</label>
+                        <nz-slider
+                          [nzMin]="-1"
+                          [nzMax]="1"
+                          [nzStep]="0.1"
+                          [(ngModel)]="masterPan"
+                          (ngModelChange)="updateMasterPan($event)"
+                          [disabled]="!isAudioContextStarted"
+                        ></nz-slider>
+                        <span class="value">{{
+                          masterPan | number : "1.1-1"
+                        }}</span>
+                      </div>
+
+                      <!-- Monitoring -->
+                      <div class="meters">
+                        <div class="vu-meter">
+                          <div class="meter-label">Niveau</div>
+                          <div class="meter-bar">
+                            <div
+                              class="meter-fill"
+                              [style.height.%]="vuMeterLevel"
+                            ></div>
+                          </div>
+                          <div class="meter-value">
+                            {{ vuMeterLevel | number : "1.0-0" }}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </nz-card>
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Visualisateur">
+                <div class="visualizer-content">
+                  <nz-card>
+                    <div class="visualizer-controls">
+                      <nz-radio-group
+                        [(ngModel)]="visualizerType"
+                        (ngModelChange)="updateVisualizerType()"
+                      >
+                        <label nz-radio-button nzValue="waveform"
+                          >Forme d'onde</label
+                        >
+                        <label nz-radio-button nzValue="frequency"
+                          >Fréquences</label
+                        >
+                      </nz-radio-group>
+                    </div>
+                    <div class="visualizer-container">
+                      <canvas #mainVisualizer></canvas>
+                    </div>
+                  </nz-card>
                 </div>
               </nz-tab>
             </nz-tabset>
@@ -243,8 +446,8 @@
           audio)
         </p>
 
-        <div *ngIf="availableDevices.length === 0" class="no-devices">
-          <p>Aucun périphérique audio trouvé.</p>
+        <div *ngIf="getInputDevices().length === 0" class="no-devices">
+          <p>Aucun périphérique d'entrée audio trouvé.</p>
           <button
             nz-button
             nzType="primary"
@@ -256,14 +459,44 @@
         </div>
 
         <nz-select
-          *ngIf="availableDevices.length > 0"
-          [(ngModel)]="selectedDeviceId"
-          (ngModelChange)="selectDevice($event)"
+          *ngIf="getInputDevices().length > 0"
+          [(ngModel)]="selectedInputDevice"
+          (ngModelChange)="selectDevice($event, true)"
           class="device-select"
         >
           <nz-option
-            *ngFor="let device of availableDevices"
-            [nzValue]="device.deviceId"
+            *ngFor="let device of getInputDevices()"
+            [nzValue]="device.id"
+            [nzLabel]="device.label"
+          ></nz-option>
+        </nz-select>
+
+        <h3 class="mt-4">Périphérique de sortie</h3>
+        <p>
+          Sélectionnez le périphérique de sortie audio (haut-parleurs ou casque)
+        </p>
+
+        <div *ngIf="getOutputDevices().length === 0" class="no-devices">
+          <p>Aucun périphérique de sortie audio trouvé.</p>
+          <button
+            nz-button
+            nzType="primary"
+            (click)="guitarAudioService.updateAvailableDevices()"
+          >
+            <span nz-icon nzType="reload"></span>
+            Rafraîchir
+          </button>
+        </div>
+
+        <nz-select
+          *ngIf="getOutputDevices().length > 0"
+          [(ngModel)]="selectedOutputDevice"
+          (ngModelChange)="selectDevice($event, false)"
+          class="device-select"
+        >
+          <nz-option
+            *ngFor="let device of getOutputDevices()"
+            [nzValue]="device.id"
             [nzLabel]="device.label"
           ></nz-option>
         </nz-select>
@@ -271,11 +504,15 @@
         <div class="permissions-note">
           <p>
             <span nz-icon nzType="info-circle"></span>
-            Si vous ne voyez pas votre périphérique, assurez-vous d'avoir
-            accordé les permissions d'accès au microphone à votre navigateur.
+            Si vous ne voyez pas vos périphériques, assurez-vous d'avoir accordé
+            les permissions d'accès au microphone à votre navigateur.
           </p>
         </div>
       </div>
     </ng-container>
   </nz-drawer>
+
+  <div class="visualizer-container">
+    <canvas #visualizer width="800" height="200"></canvas>
+  </div>
 </div>

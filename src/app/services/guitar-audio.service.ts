@@ -1,316 +1,219 @@
-import { Injectable, OnDestroy } from '@angular/core';
-import * as Tone from 'tone';
+import { Injectable } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
+import * as Tone from 'tone';
 
 export interface AudioDevice {
-  deviceId: string;
+  id: string;
   label: string;
+  kind: 'audioinput' | 'audiooutput';
 }
 
 @Injectable({
   providedIn: 'root',
 })
-export class GuitarAudioService implements OnDestroy {
-  private input: Tone.UserMedia | null = null;
-  private effects: Map<string, Tone.ToneAudioNode> = new Map();
-  private effectChain: Tone.ToneAudioNode[] = [];
-  private effectIds: string[] = []; // Liste ordonnée des IDs d'effets
-  private isInitialized = false;
-  private isInputOpen = false;
+export class GuitarAudioService {
+  public availableDevices$ = new BehaviorSubject<AudioDevice[]>([]);
+  public currentInputDevice$ = new BehaviorSubject<string>('');
+  public currentOutputDevice$ = new BehaviorSubject<string>('');
 
-  private availableDevicesSubject = new BehaviorSubject<AudioDevice[]>([]);
-  availableDevices$ = this.availableDevicesSubject.asObservable();
+  private inputNode: Tone.UserMedia | null = null;
+  private outputNode: Tone.Gain | null = null;
+  private analyzer: Tone.Analyser | null = null;
+  private masterVolume: Tone.Volume | null = null;
+  private masterPan: Tone.Panner | null = null;
 
-  private currentDeviceSubject = new BehaviorSubject<string>('');
-  currentDevice$ = this.currentDeviceSubject.asObservable();
+  private effectChain: Map<string, Tone.ToneAudioNode> = new Map();
+  private effectOrder: string[] = [];
 
   constructor() {
-    // Ne pas créer UserMedia ici, attendre l'initialisation
+    this.initAudio();
   }
 
-  ngOnDestroy(): void {
-    this.dispose();
-  }
-
-  async updateAvailableDevices() {
+  private async initAudio() {
     try {
-      // Assurer que le contexte est démarré pour énumérer
-      if (Tone.context.state !== 'running') {
-        console.warn(
-          'Contexte audio non démarré, impossible de lister les périphériques.'
-        );
-        // Peut-être attendre ou retourner une liste vide ?
-        // await Tone.start(); // Ne pas démarrer ici, doit être une action utilisateur
-        return;
-      }
+      // Démarrer Tone.js
+      await Tone.start();
+
+      // Demander l'autorisation d'accès aux périphériques audio
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // Créer les noeuds audio de base
+      this.inputNode = new Tone.UserMedia();
+      await this.inputNode.open(); // Ouvrir avec le périphérique par défaut
+
+      this.outputNode = new Tone.Gain();
+
+      // Créer l'analyseur avec une taille de buffer plus grande pour une meilleure visualisation
+      this.analyzer = new Tone.Analyser('waveform', 1024);
+
+      // Créer les contrôleurs de mix
+      this.masterVolume = new Tone.Volume(0);
+      this.masterPan = new Tone.Panner(0);
+
+      // Connexion de base: input -> analyser -> masterVolume -> masterPan -> output
+      this.inputNode.connect(this.analyzer);
+      this.inputNode.connect(this.masterVolume);
+      this.masterVolume.connect(this.masterPan);
+      this.masterPan.connect(this.outputNode);
+      this.outputNode.toDestination();
+
+      // Mettre à jour la liste des périphériques
+      await this.updateAvailableDevices();
+
+      console.log('Service audio initialisé avec succès');
+    } catch (error) {
+      console.error("Erreur d'initialisation du service audio:", error);
+    }
+  }
+
+  public async updateAvailableDevices(): Promise<void> {
+    try {
+      // Demander l'autorisation d'accès aux périphériques audio
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+
       const devices = await navigator.mediaDevices.enumerateDevices();
-      const audioInputs = devices
-        .filter((device) => device.kind === 'audioinput')
+      const audioDevices = devices
+        .filter(
+          (device) =>
+            device.kind === 'audioinput' || device.kind === 'audiooutput'
+        )
         .map((device) => ({
-          deviceId: device.deviceId,
-          label:
-            device.label ||
-            `Périphérique audio ${device.deviceId.substring(0, 5)}...`,
+          id: device.deviceId,
+          label: device.label || `Périphérique ${device.kind}`,
+          kind: device.kind as 'audioinput' | 'audiooutput',
         }));
 
-      this.availableDevicesSubject.next(audioInputs);
-
-      // Pré-sélectionner si aucun n'est sélectionné et qu'il y en a de disponibles
-      if (audioInputs.length > 0 && !this.currentDeviceSubject.value) {
-        this.currentDeviceSubject.next(audioInputs[0].deviceId);
-      }
-    } catch (error) {
-      console.error("Erreur lors de l'énumération des périphériques:", error);
-      this.availableDevicesSubject.next([]); // Vider en cas d'erreur
-    }
-  }
-
-  async initialize(): Promise<boolean> {
-    if (this.isInitialized) return true;
-
-    // Vérifier si le contexte audio est démarré (devrait l'être par l'UI)
-    if (Tone.context.state !== 'running') {
-      console.error(
-        "Le contexte audio doit être démarré par une interaction utilisateur avant l'initialisation."
-      );
-      return false;
-    }
-
-    await this.updateAvailableDevices();
-    const initialDeviceId = this.currentDeviceSubject.value;
-
-    if (!initialDeviceId) {
-      console.warn("Aucun périphérique d'entrée audio trouvé ou sélectionné.");
-      // Essayer d'ouvrir l'entrée par défaut si possible ?
-      // Pour l'instant, on considère que l'initialisation échoue sans device
-      // return false;
-      // Tentative avec l'entrée par défaut
-      console.log("Tentative d'initialisation avec l'entrée par défaut.");
-      try {
-        this.input = new Tone.UserMedia();
-        await this.input.open();
-        this.isInputOpen = true;
-        this.rebuildChain();
-        this.isInitialized = true;
-        return true;
-      } catch (defaultError) {
-        console.error(
-          "Impossible d'ouvrir l'entrée audio par défaut.",
-          defaultError
-        );
-        return false;
-      }
-    }
-
-    console.log(`Initialisation avec le périphérique : ${initialDeviceId}`);
-    const success = await this.selectDevice(initialDeviceId);
-    this.isInitialized = success;
-    return success;
-  }
-
-  async selectDevice(deviceId: string): Promise<boolean> {
-    // Ne pas sélectionner si le contexte n'est pas prêt
-    if (Tone.context.state !== 'running') {
-      console.error(
-        'Impossible de sélectionner le périphérique, contexte audio non démarré.'
-      );
-      return false;
-    }
-
-    // Si c'est le même device et qu'il est déjà ouvert, ne rien faire
-    if (deviceId === this.currentDeviceSubject.value && this.isInputOpen) {
-      return true;
-    }
-
-    console.log(`Sélection du périphérique: ${deviceId}`);
-
-    try {
-      // Fermer l'entrée précédente si elle existe et est ouverte
-      await this.closeCurrentInput();
-
-      // Créer et ouvrir la nouvelle entrée
-      this.input = new Tone.UserMedia();
-      await this.input.open(deviceId); // Passer deviceId à open
-      this.isInputOpen = true;
-      console.log(`Périphérique ${deviceId} ouvert avec succès.`);
-
-      // Mettre à jour l'état et reconstruire la chaîne
-      this.currentDeviceSubject.next(deviceId);
-      this.rebuildChain();
-
-      return true;
+      this.availableDevices$.next(audioDevices);
+      console.log('Périphériques audio détectés:', audioDevices);
     } catch (error) {
       console.error(
-        `Erreur lors de la sélection/ouverture du périphérique ${deviceId}:`,
+        'Erreur lors de la mise à jour des périphériques audio:',
         error
       );
-      this.isInputOpen = false;
-      this.input = null; // Nettoyer en cas d'erreur
-      return false;
+      this.availableDevices$.next([]);
     }
   }
 
-  private async closeCurrentInput() {
-    if (this.input && this.isInputOpen) {
-      console.log("Fermeture de l'entrée audio précédente.");
-      try {
-        this.input.close();
-        await this.input.dispose(); // S'assurer que les ressources sont libérées
-      } catch (disposeError) {
-        console.warn(
-          "Erreur lors de la fermeture/disposition de l'entrée précédente:",
-          disposeError
-        );
+  public async selectInputDevice(deviceId: string): Promise<void> {
+    try {
+      if (this.inputNode) {
+        // Arrêter le flux actuel
+        await this.inputNode.close();
+
+        // Ouvrir avec le nouveau périphérique
+        await this.inputNode.open(deviceId);
+        this.currentInputDevice$.next(deviceId);
+        console.log(`Périphérique d'entrée sélectionné: ${deviceId}`);
       }
-      this.isInputOpen = false;
-      this.input = null;
-    }
-  }
-
-  private buildEffectChain(): Tone.ToneAudioNode | null {
-    if (!this.input || !this.isInputOpen) {
-      console.warn(
-        "Impossible de construire la chaîne d'effets: entrée non prête."
-      );
-      return null;
-    }
-
-    // Déconnecter l'entrée de tout pour éviter les connexions multiples
-    this.input.disconnect();
-
-    // Reconstruire la chaîne d'effets basée sur l'ordre actuel des IDs
-    this.effectChain = [];
-    for (const id of this.effectIds) {
-      const effect = this.effects.get(id);
-      if (effect) {
-        this.effectChain.push(effect);
-      }
-    }
-
-    let current: Tone.ToneAudioNode = this.input;
-    if (this.effectChain.length === 0) {
-      console.log("Connexion directe de l'entrée à la destination.");
-      current.toDestination();
-    } else {
-      console.log("Construction de la chaîne d'effets:", this.effectIds);
-      this.effectChain.forEach((effect) => {
-        // S'assurer que les anciens effets sont déconnectés avant de reconnecter
-        effect.disconnect();
-        console.log(`Connexion ${current.name} -> ${effect.name}`);
-        current.connect(effect);
-        current = effect;
-      });
-      console.log(`Connexion ${current.name} -> Destination`);
-      current.toDestination();
-    }
-    return current; // Retourne le dernier nœud de la chaîne (ou l'entrée si vide)
-  }
-
-  addEffect(id: string, effectInstance: Tone.ToneAudioNode) {
-    if (this.effects.has(id)) {
-      console.warn(`L'effet avec ID ${id} existe déjà.`);
-      return; // Éviter les doublons
-    }
-    this.effects.set(id, effectInstance);
-    this.effectIds.push(id);
-    this.rebuildChain();
-  }
-
-  removeEffect(id: string) {
-    const effectInstance = this.effects.get(id);
-    if (effectInstance) {
-      const index = this.effectIds.indexOf(id);
-      if (index > -1) {
-        this.effectIds.splice(index, 1);
-        this.effects.delete(id);
-        // Disposer l'effet pour libérer les ressources audio
-        try {
-          effectInstance.disconnect();
-          effectInstance.dispose();
-          console.log(`Effet ${id} supprimé et disposé.`);
-        } catch (disposeError) {
-          console.warn(
-            `Erreur lors de la disposition de l'effet ${id}:`,
-            disposeError
-          );
-        }
-        this.rebuildChain();
-      } else {
-        console.warn(
-          `Effet ${id} trouvé dans la map mais pas dans la liste d'IDs.`
-        );
-        // Nettoyer la map par sécurité
-        this.effects.delete(id);
-      }
-    } else {
-      console.warn(`Tentative de suppression d'un effet inexistant: ${id}`);
-    }
-  }
-
-  reorderEffects(newOrder: string[]) {
-    // Vérifier que tous les IDs existent
-    const validIds = newOrder.filter((id) => this.effects.has(id));
-
-    // Si la longueur est différente, il y a des IDs invalides
-    if (validIds.length !== newOrder.length) {
-      console.warn(
-        'Certains IDs dans newOrder ne correspondent pas à des effets existants'
+    } catch (error) {
+      console.error(
+        "Erreur lors de la sélection du périphérique d'entrée:",
+        error
       );
     }
+  }
 
-    // Si aucun ID valide, ne rien faire
-    if (validIds.length === 0) {
-      console.warn('Aucun ID valide fourni pour la réorganisation');
+  public selectOutputDevice(deviceId: string): void {
+    // Tone.js ne supporte pas directement le changement de périphérique de sortie
+    // Cela nécessiterait une implémentation personnalisée avec l'API Web Audio
+    console.log(
+      `Sélection du périphérique de sortie non supportée: ${deviceId}`
+    );
+    this.currentOutputDevice$.next(deviceId);
+  }
+
+  public addEffect(effectId: string, effect: Tone.ToneAudioNode): void {
+    if (!this.masterVolume) return;
+
+    // Ajouter à notre map d'effets
+    this.effectChain.set(effectId, effect);
+    this.effectOrder.push(effectId);
+
+    // Reconstruire la chaîne d'effets
+    this.rebuildEffectChain();
+  }
+
+  public removeEffectById(effectId: string): void {
+    if (this.effectChain.has(effectId)) {
+      this.effectChain.delete(effectId);
+      this.effectOrder = this.effectOrder.filter((id) => id !== effectId);
+      this.rebuildEffectChain();
+    }
+  }
+
+  public reorderEffects(newOrder: string[]): void {
+    // Vérifier que tous les IDs sont présents
+    if (
+      newOrder.length === this.effectOrder.length &&
+      newOrder.every((id) => this.effectChain.has(id))
+    ) {
+      this.effectOrder = [...newOrder];
+      this.rebuildEffectChain();
+    }
+  }
+
+  private rebuildEffectChain(): void {
+    if (!this.inputNode || !this.masterVolume) return;
+
+    // Déconnecter tous les noeuds
+    this.inputNode.disconnect();
+
+    // Si aucun effet, connexion directe
+    if (this.effectOrder.length === 0) {
+      if (this.analyzer) {
+        this.inputNode.connect(this.analyzer);
+      }
+      this.inputNode.connect(this.masterVolume);
       return;
     }
 
-    // Vérifier s'il y a un changement réel dans l'ordre
-    let changed = false;
-    if (validIds.length !== this.effectIds.length) {
-      changed = true;
-    } else {
-      for (let i = 0; i < validIds.length; i++) {
-        if (validIds[i] !== this.effectIds[i]) {
-          changed = true;
-          break;
-        }
+    // Sinon, construire la chaîne d'effets
+    let previousNode: Tone.ToneAudioNode = this.inputNode;
+
+    // Connecter l'entrée à l'analyseur en premier
+    if (this.analyzer) {
+      previousNode.connect(this.analyzer);
+    }
+
+    // Puis construire la chaîne d'effets
+    for (const effectId of this.effectOrder) {
+      const effect = this.effectChain.get(effectId);
+      if (effect) {
+        previousNode.connect(effect);
+        previousNode = effect;
       }
     }
 
-    if (changed) {
-      console.log("Réorganisation de la chaîne d'effets:", validIds);
-      this.effectIds = validIds;
-      this.rebuildChain();
-    } else {
-      console.log("Aucun changement d'ordre détecté.");
+    // Connecter le dernier effet au volume
+    previousNode.connect(this.masterVolume);
+  }
+
+  public setMasterVolume(value: number): void {
+    if (this.masterVolume) {
+      this.masterVolume.volume.value = 20 * Math.log10(value);
     }
   }
 
-  private rebuildChain() {
-    // Reconstruire seulement si l'entrée est prête
-    if (this.input && this.isInputOpen) {
-      console.log('Reconstruction de la chaîne audio...');
-      this.buildEffectChain();
-    } else {
-      console.warn(
-        "Demande de reconstruction de chaîne, mais l'entrée n'est pas prête."
-      );
+  public setMasterPan(value: number): void {
+    if (this.masterPan) {
+      this.masterPan.pan.value = value;
     }
   }
 
-  dispose() {
-    console.log('Disposition de GuitarAudioService...');
-    this.closeCurrentInput();
-    this.effectChain.forEach((effect) => {
-      try {
-        effect.dispose();
-      } catch (e) {
-        console.warn('Erreur disposition effet:', e);
-      }
-    });
-    this.effects.clear();
-    this.effectChain = [];
-    this.effectIds = [];
-    this.isInitialized = false;
+  public getAnalyzer(): Tone.Analyser | null {
+    return this.analyzer;
+  }
+
+  // Getters pour les observables
+  public get availableDevices() {
+    return this.availableDevices$.asObservable();
+  }
+
+  public get currentInputDevice() {
+    return this.currentInputDevice$.asObservable();
+  }
+
+  public get currentOutputDevice() {
+    return this.currentOutputDevice$.asObservable();
   }
 }

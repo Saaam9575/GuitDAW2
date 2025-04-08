@@ -1,1 +1,139 @@
 /* You can add global styles to this file, and also import other style files */
+@import "ng-zorro-antd/ng-zorro-antd.min.css";
+
+body {
+  margin: 0;
+  background: #141414;
+  color: #fff;
+}
+
+// Styles globaux pour Ant Design
+::ng-deep {
+  // Tabs
+  .ant-tabs {
+    color: #fff;
+
+    .ant-tabs-nav {
+      &::before {
+        border-bottom-color: #333;
+      }
+
+      .ant-tabs-tab {
+        color: #999;
+
+        &:hover {
+          color: #1890ff;
+        }
+      }
+
+      .ant-tabs-tab-active {
+        .ant-tabs-tab-btn {
+          color: #1890ff;
+        }
+      }
+
+      .ant-tabs-ink-bar {
+        background: #1890ff;
+      }
+    }
+  }
+
+  // Cards
+  .ant-card {
+    background: #1f1f1f;
+    border-color: #333;
+    color: #fff;
+
+    .ant-card-head {
+      color: #fff;
+      border-bottom-color: #333;
+    }
+  }
+
+  // Buttons
+  .ant-btn {
+    &:not(.ant-btn-primary) {
+      background: #2a2a2a;
+      border-color: #333;
+      color: #fff;
+
+      &:hover {
+        border-color: #1890ff;
+        color: #1890ff;
+      }
+    }
+
+    &.ant-btn-primary {
+      &:disabled {
+        background: #1f1f1f;
+        border-color: #333;
+      }
+    }
+  }
+
+  // Sliders
+  .ant-slider {
+    .ant-slider-rail {
+      background-color: #2a2a2a;
+    }
+
+    .ant-slider-track {
+      background-color: #1890ff;
+    }
+
+    .ant-slider-handle {
+      border-color: #1890ff;
+      background-color: #1f1f1f;
+
+      &:focus {
+        box-shadow: 0 0 0 5px rgba(24, 144, 255, 0.2);
+      }
+    }
+  }
+
+  // Radio buttons
+  .ant-radio-button-wrapper {
+    background: #2a2a2a;
+    border-color: #333;
+    color: #fff;
+
+    &:hover {
+      color: #1890ff;
+    }
+
+    &.ant-radio-button-wrapper-checked {
+      background: #1890ff;
+      border-color: #1890ff;
+      color: #fff;
+    }
+  }
+
+  // Drawer
+  .ant-drawer {
+    .ant-drawer-content {
+      background: #1f1f1f;
+
+      .ant-drawer-header {
+        background: #1f1f1f;
+        border-bottom-color: #333;
+
+        .ant-drawer-title {
+          color: #fff;
+        }
+
+        .ant-drawer-close {
+          color: #999;
+
+          &:hover {
+            color: #fff;
+          }
+        }
+      }
+
+      .ant-drawer-body {
+        background: #1f1f1f;
+        color: #fff;
+      }
+    }
+  }
+}
