@@ -35,22 +35,27 @@ export class GuitarAudioService {
       await Tone.start();
 
       // Demander l'autorisation d'accès aux périphériques audio
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Stream audio obtenu:', stream);
 
       // Créer les noeuds audio de base
       this.inputNode = new Tone.UserMedia();
-      await this.inputNode.open(); // Ouvrir avec le périphérique par défaut
+      console.log('Noeud UserMedia créé');
+
+      // Ouvrir avec le périphérique par défaut
+      await this.inputNode.open();
+      console.log('Périphérique par défaut ouvert');
 
       this.outputNode = new Tone.Gain();
 
-      // Créer l'analyseur avec une taille de buffer plus grande pour une meilleure visualisation
+      // Créer l'analyseur avec une taille de buffer plus grande
       this.analyzer = new Tone.Analyser('waveform', 1024);
 
       // Créer les contrôleurs de mix
       this.masterVolume = new Tone.Volume(0);
       this.masterPan = new Tone.Panner(0);
 
-      // Connexion de base: input -> analyser -> masterVolume -> masterPan -> output
+      // Connexion de base
       this.inputNode.connect(this.analyzer);
       this.inputNode.connect(this.masterVolume);
       this.masterVolume.connect(this.masterPan);
@@ -68,10 +73,19 @@ export class GuitarAudioService {
 
   public async updateAvailableDevices(): Promise<void> {
     try {
-      // Demander l'autorisation d'accès aux périphériques audio
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Vérifier si nous avons déjà l'autorisation
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (error) {
+        console.error("Erreur lors de la demande d'autorisation:", error);
+        return;
+      }
 
+      // Énumérer les périphériques
       const devices = await navigator.mediaDevices.enumerateDevices();
+      console.log('Tous les périphériques:', devices);
+
       const audioDevices = devices
         .filter(
           (device) =>
@@ -83,8 +97,17 @@ export class GuitarAudioService {
           kind: device.kind as 'audioinput' | 'audiooutput',
         }));
 
+      console.log('Périphériques audio filtrés:', audioDevices);
       this.availableDevices$.next(audioDevices);
-      console.log('Périphériques audio détectés:', audioDevices);
+
+      // Si nous n'avons pas de périphérique d'entrée sélectionné, sélectionner le premier disponible
+      const inputDevices = audioDevices.filter((d) => d.kind === 'audioinput');
+      if (inputDevices.length > 0 && !this.currentInputDevice$.value) {
+        await this.selectInputDevice(inputDevices[0].id);
+      }
+
+      // Libérer le stream de test
+      stream.getTracks().forEach((track) => track.stop());
     } catch (error) {
       console.error(
         'Erreur lors de la mise à jour des périphériques audio:',
@@ -97,13 +120,16 @@ export class GuitarAudioService {
   public async selectInputDevice(deviceId: string): Promise<void> {
     try {
       if (this.inputNode) {
-        // Arrêter le flux actuel
+        console.log('Fermeture du périphérique actuel...');
         await this.inputNode.close();
 
-        // Ouvrir avec le nouveau périphérique
+        console.log('Ouverture du nouveau périphérique:', deviceId);
         await this.inputNode.open(deviceId);
         this.currentInputDevice$.next(deviceId);
-        console.log(`Périphérique d'entrée sélectionné: ${deviceId}`);
+        console.log("Nouveau périphérique d'entrée sélectionné:", deviceId);
+
+        // Reconnecter le noeud d'entrée
+        this.rebuildEffectChain();
       }
     } catch (error) {
       console.error(

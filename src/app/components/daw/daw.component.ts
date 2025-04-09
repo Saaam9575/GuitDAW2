@@ -185,7 +185,11 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
       this.isAudioContextStarted = true;
       console.log('Contexte audio démarré');
 
-      // Initialiser le service audio
+      // Demander l'autorisation d'accès aux périphériques audio
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log('Autorisation audio obtenue:', stream);
+
+      // Initialiser le service audio et mettre à jour les périphériques
       await this.guitarAudioService.updateAvailableDevices();
 
       // Démarrer la visualisation
@@ -218,7 +222,10 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
 
   showDeviceDrawer() {
     this.isDeviceDrawerVisible = true;
-    this.guitarAudioService.updateAvailableDevices();
+    console.log('Mise à jour des périphériques...');
+    this.guitarAudioService.updateAvailableDevices().then(() => {
+      console.log('Périphériques mis à jour');
+    });
   }
 
   closeDeviceDrawer() {
@@ -724,6 +731,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   getInputDevices(): AudioDevice[] {
+    console.log('Périphériques disponibles:', this.availableDevices);
     return this.availableDevices.filter(
       (device) => device.kind === 'audioinput'
     );
@@ -977,6 +985,10 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.isAudioContextStarted) return;
 
     try {
+      console.log(
+        `Sélection du périphérique ${isInput ? 'entrée' : 'sortie'}:`,
+        deviceId
+      );
       if (isInput) {
         await this.guitarAudioService.selectInputDevice(deviceId);
       } else {
