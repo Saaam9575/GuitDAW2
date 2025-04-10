@@ -19,6 +19,19 @@ import {
   ReloadOutline,
   CloseOutline,
   SettingOutline,
+  AudioOutline,
+  DownloadOutline,
+  HeartOutline,
+  HeartFill,
+  WarningFill,
+  PauseOutline,
+  YoutubeOutline,
+  DeleteOutline,
+  SaveOutline,
+  RiseOutline,
+  CompressOutline,
+  SyncOutline,
+  FireOutline
 } from '@ant-design/icons-angular/icons';
 
 import { AppRoutingModule } from './app-routing.module';
@@ -36,6 +49,19 @@ const icons: IconDefinition[] = [
   ReloadOutline,
   CloseOutline,
   SettingOutline,
+  AudioOutline,
+  DownloadOutline,
+  HeartOutline,
+  HeartFill,
+  WarningFill,
+  PauseOutline,
+  YoutubeOutline,
+  DeleteOutline,
+  SaveOutline,
+  RiseOutline,
+  CompressOutline,
+  SyncOutline,
+  FireOutline
 ];
 
 @NgModule({

@@ -34,6 +34,9 @@ import { NzSwitchModule } from 'ng-zorro-antd/switch';
 import { NzTagModule } from 'ng-zorro-antd/tag';
 import { NzEmptyModule } from 'ng-zorro-antd/empty';
 import { NzRadioModule } from 'ng-zorro-antd/radio';
+import { NzToolTipModule } from 'ng-zorro-antd/tooltip';
+import { SafeUrlPipe } from '../../pipes/safe-url.pipe';
+import { RecordingComponent } from '../recording/recording.component';
 
 // Interface pour stocker les informations des effets
 interface EffectInfo {
@@ -70,6 +73,11 @@ interface Preset {
   }[];
 }
 
+interface FavoriteVideo {
+  url: string;
+  title: string;
+}
+
 @Component({
   selector: 'app-daw',
   standalone: true,
@@ -92,6 +100,9 @@ interface Preset {
     NzTagModule,
     NzEmptyModule,
     NzRadioModule,
+    NzToolTipModule,
+    SafeUrlPipe,
+    RecordingComponent
   ],
   templateUrl: './daw.component.html',
   styleUrls: ['./daw.component.scss'],
@@ -103,6 +114,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   mainVisualizerCanvas!: ElementRef<HTMLCanvasElement>;
   private animationFrameId: number | null = null;
 
+  bandlabUrl = 'https://www.bandlab.com/studio';
   effectInfos: EffectInfo[] = [];
   isAudioContextStarted = false;
 
@@ -116,7 +128,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   selectedTabUrl: string | null = null;
 
   private subscriptions: Subscription[] = [];
-  private effectCounter = 0; // Compteur pour générer des IDs uniques
+  private effectCounter = 0;
 
   presets: Preset[] = [];
   newPresetName: string = '';
@@ -131,7 +143,12 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   visualizerType: 'waveform' | 'frequency' = 'waveform';
   private mainVisualizerAnimationId: number | null = null;
 
-  isPlaying = false;
+  youtubeUrl: string = '';
+  youtubeEmbedUrl: string | null = null;
+  currentVideoTitle: string = '';
+  favorites: FavoriteVideo[] = [];
+
+  tabSearchQuery: string = '';
 
   constructor(public guitarAudioService: GuitarAudioService) {}
 
@@ -159,6 +176,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // Initialiser le VU-mètre
     this.updateVuMeter();
+    this.loadFavorites();
   }
 
   ngAfterViewInit() {
@@ -202,22 +220,18 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
 
   async onInputDeviceChange(deviceId: string) {
     try {
-      await this.guitarAudioService.selectInputDevice(deviceId);
+      await this.guitarAudioService.setInputDevice(deviceId);
     } catch (error) {
-      console.error(
-        "Erreur lors du changement de périphérique d'entrée:",
-        error
-      );
+      console.error("Erreur lors du changement de périphérique d'entrée:", error);
     }
   }
 
   async onOutputDeviceChange(deviceId: string) {
-    // Pour l'instant, nous n'avons pas besoin de gérer les périphériques de sortie
-    // car nous utilisons le périphérique de sortie par défaut du système
-    console.log(
-      'Changement de périphérique de sortie non implémenté:',
-      deviceId
-    );
+    try {
+      await this.guitarAudioService.setOutputDevice(deviceId);
+    } catch (error) {
+      console.error("Erreur lors du changement de périphérique de sortie:", error);
+    }
   }
 
   showDeviceDrawer() {
@@ -731,16 +745,11 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   getInputDevices(): AudioDevice[] {
-    console.log('Périphériques disponibles:', this.availableDevices);
-    return this.availableDevices.filter(
-      (device) => device.kind === 'audioinput'
-    );
+    return this.availableDevices.filter(device => device.kind === 'audioinput');
   }
 
   getOutputDevices(): AudioDevice[] {
-    return this.availableDevices.filter(
-      (device) => device.kind === 'audiooutput'
-    );
+    return this.availableDevices.filter(device => device.kind === 'audiooutput');
   }
 
   private setupVisualizer() {
@@ -752,8 +761,8 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
       const analyzer = this.guitarAudioService.getAnalyzer();
       if (!analyzer) return;
 
-      const dataArray = analyzer.getValue();
-      const bufferLength = analyzer.size;
+      const dataArray = analyzer.getValue() as Float32Array;
+      const bufferLength = dataArray.length;
 
       ctx.fillStyle = '#000000';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -766,7 +775,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
       let x = 0;
 
       for (let i = 0; i < bufferLength; i++) {
-        const v = (dataArray as Float32Array)[i];
+        const v = dataArray[i];
         const y = ((v + 1) * canvas.height) / 2;
 
         if (i === 0) {
@@ -875,34 +884,36 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   private setupMainVisualizer() {
+    if (!this.mainVisualizerCanvas) return;
+
     const canvas = this.mainVisualizerCanvas.nativeElement;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Ajuster la taille du canvas pour la résolution de l'écran
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    // Ajuster la taille du canvas
+    const resize = () => {
+      const container = canvas.parentElement;
+      if (container) {
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+      }
+    };
+    resize();
+    window.addEventListener('resize', resize);
 
     const drawVisualizer = () => {
-      if (!this.isAudioContextStarted) {
-        ctx.fillStyle = '#000000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        this.mainVisualizerAnimationId = requestAnimationFrame(drawVisualizer);
-        return;
-      }
-
       const analyzer = this.guitarAudioService.getAnalyzer();
       if (!analyzer) return;
 
-      const data = analyzer.getValue() as Float32Array;
+      const bufferLength = 1024; // Taille fixe du buffer
+      const dataArray = new Float32Array(bufferLength);
 
       if (this.visualizerType === 'waveform') {
-        this.drawWaveform(ctx, data, canvas.width, canvas.height);
+        analyzer.getValue(); // Met à jour les données
+        this.drawWaveform(ctx, analyzer.getValue() as Float32Array, canvas.width, canvas.height);
       } else {
-        this.drawFrequencyBars(ctx, data, canvas.width, canvas.height);
+        analyzer.getValue(); // Met à jour les données
+        this.drawFrequencyBars(ctx, analyzer.getValue() as Float32Array, canvas.width, canvas.height);
       }
 
       this.mainVisualizerAnimationId = requestAnimationFrame(drawVisualizer);
@@ -911,12 +922,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
     drawVisualizer();
   }
 
-  private drawWaveform(
-    ctx: CanvasRenderingContext2D,
-    data: Float32Array,
-    width: number,
-    height: number
-  ) {
+  private drawWaveform(ctx: CanvasRenderingContext2D, data: Float32Array, width: number, height: number) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
@@ -929,7 +935,7 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
 
     for (let i = 0; i < data.length; i++) {
       const v = data[i];
-      const y = ((v + 1) * height) / 2;
+      const y = (v + 1) * height / 2;
 
       if (i === 0) {
         ctx.moveTo(x, y);
@@ -944,58 +950,141 @@ export class DawComponent implements OnInit, OnDestroy, AfterViewInit {
     ctx.stroke();
   }
 
-  private drawFrequencyBars(
-    ctx: CanvasRenderingContext2D,
-    data: Float32Array,
-    width: number,
-    height: number
-  ) {
+  private drawFrequencyBars(ctx: CanvasRenderingContext2D, data: Float32Array, width: number, height: number) {
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, width, height);
 
-    const barWidth = width / data.length;
-    const barHeightMultiplier = height / 2;
+    // Utiliser seulement la moitié des données pour une meilleure visualisation
+    const usableDataLength = Math.floor(data.length / 2);
+    const barWidth = width / usableDataLength;
+    const minDb = -100;
+    const maxDb = 0;
 
-    for (let i = 0; i < data.length; i++) {
-      const value = Math.abs(data[i]);
-      const barHeight = value * barHeightMultiplier;
+    for (let i = 0; i < usableDataLength; i++) {
+      // Normaliser les données entre 0 et 1
+      const db = Math.max(minDb, Math.min(maxDb, data[i]));
+      const normalized = (db - minDb) / (maxDb - minDb);
+      
+      // Calculer la hauteur de la barre
+      const barHeight = normalized * height;
 
-      // Gradient de couleur basé sur la fréquence
-      const hue = (i / data.length) * 270;
-      ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+      // Créer un dégradé de couleur basé sur la fréquence et l'amplitude
+      const hue = (i / usableDataLength) * 270; // 0-270 degrés (violet à rouge)
+      const saturation = 80 + normalized * 20; // 80-100%
+      const lightness = 40 + normalized * 20; // 40-60%
+      ctx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
 
-      ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
+      // Dessiner la barre
+      const x = i * barWidth;
+      const y = height - barHeight;
+      ctx.fillRect(x, y, barWidth - 1, barHeight);
+
+      // Ajouter un effet de brillance
+      const gradient = ctx.createLinearGradient(x, y, x, y + barHeight);
+      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.2)');
+      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, y, barWidth - 1, barHeight);
     }
   }
 
-  toggleAudioPlayback() {
-    if (!this.isAudioContextStarted) {
-      return;
-    }
-
-    this.isPlaying = !this.isPlaying;
-    if (this.isPlaying) {
-      Tone.Transport.start();
-    } else {
-      Tone.Transport.pause();
-    }
-  }
-
-  async selectDevice(deviceId: string, isInput: boolean) {
+  selectDevice(deviceId: string, isInput: boolean) {
     if (!this.isAudioContextStarted) return;
 
     try {
-      console.log(
-        `Sélection du périphérique ${isInput ? 'entrée' : 'sortie'}:`,
-        deviceId
-      );
+      console.log(`Sélection du périphérique ${isInput ? 'entrée' : 'sortie'}:`, deviceId);
       if (isInput) {
-        await this.guitarAudioService.selectInputDevice(deviceId);
+        this.guitarAudioService.setInputDevice(deviceId);
       } else {
-        this.guitarAudioService.selectOutputDevice(deviceId);
+        this.guitarAudioService.setOutputDevice(deviceId);
       }
     } catch (error) {
       console.error('Erreur lors de la sélection du périphérique:', error);
     }
+  }
+
+  public updateYoutubeEmbed() {
+    const videoId = this.extractVideoId(this.youtubeUrl);
+    if (videoId) {
+      this.youtubeEmbedUrl = `https://www.youtube.com/embed/${videoId}`;
+      if (!this.isFavorite(this.youtubeUrl)) {
+        this.updateVideoTitle(videoId);
+      }
+    } else {
+      this.youtubeEmbedUrl = null;
+    }
+  }
+
+  private extractVideoId(url: string): string | null {
+    const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+    const match = url.match(regExp);
+    return (match && match[2].length === 11) ? match[2] : null;
+  }
+
+  private async updateVideoTitle(videoId: string) {
+    try {
+      const response = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`);
+      const data = await response.json();
+      this.currentVideoTitle = data.title || 'Vidéo sans titre';
+    } catch (error) {
+      console.error('Erreur lors de la récupération du titre:', error);
+      this.currentVideoTitle = 'Vidéo sans titre';
+    }
+  }
+
+  loadFavorites() {
+    const savedFavorites = localStorage.getItem('youtube-favorites');
+    this.favorites = savedFavorites ? JSON.parse(savedFavorites) : [];
+  }
+
+  async toggleFavorite(url: string) {
+    if (!url || !this.youtubeEmbedUrl) return;
+
+    if (this.isFavorite(url)) {
+      this.favorites = this.favorites.filter(fav => fav.url !== url);
+    } else {
+      const videoId = this.extractVideoId(url);
+      if (videoId) {
+        try {
+          const response = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`);
+          const data = await response.json();
+          const title = data.title || 'Vidéo sans titre';
+          this.favorites.push({ url, title });
+        } catch (error) {
+          console.error('Erreur lors de la récupération du titre:', error);
+          this.favorites.push({ url, title: 'Vidéo sans titre' });
+        }
+      }
+    }
+    localStorage.setItem('youtube-favorites', JSON.stringify(this.favorites));
+  }
+
+  isFavorite(url: string): boolean {
+    return this.favorites.some(fav => fav.url === url);
+  }
+
+  selectFavorite(url: string) {
+    this.youtubeUrl = url;
+    this.updateYoutubeEmbed();
+  }
+
+  onDeviceChange(deviceId: string, type: 'input' | 'output'): void {
+    if (type === 'input') {
+      this.guitarAudioService.setInputDevice(deviceId);
+    } else {
+      this.guitarAudioService.setOutputDevice(deviceId);
+    }
+  }
+
+  public openSongsterrTab() {
+    if (this.tabSearchQuery) {
+      const songsterrUrl = `https://www.songsterr.com/a/wa/search?pattern=${encodeURIComponent(this.tabSearchQuery)}`;
+      window.open(songsterrUrl, '_blank');
+    }
+  }
+
+  removeFavorite(url: string) {
+    this.favorites = this.favorites.filter(fav => fav.url !== url);
+    localStorage.setItem('youtube-favorites', JSON.stringify(this.favorites));
   }
 }

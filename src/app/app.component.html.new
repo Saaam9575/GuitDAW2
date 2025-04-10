@@ -13,11 +13,17 @@
       <i nz-icon [nzType]="isAudioStarted ? 'pause-circle' : 'play-circle'" nzTheme="outline"></i>
       {{ isAudioStarted ? 'Stop' : 'Start' }}
     </button>
+    <button nz-button nzType="default" (click)="startRecording()">
+      <i nz-icon [nzType]="isRecording ? 'stop' : 'audio'" nzTheme="outline"></i>
+      {{ isRecording ? 'Stop' : 'Record' }}
+    </button>
     <button nz-button nzType="default" (click)="refreshDevices()">
       <i nz-icon nzType="reload" nzTheme="outline"></i>
     </button>
   </div>
 </div>
+
+<router-outlet />
 
 <!-- Main Content -->
 <app-daw></app-daw>

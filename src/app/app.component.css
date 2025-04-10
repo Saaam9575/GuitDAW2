@@ -1,0 +1,47 @@
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 1rem;
+  background-color: #1f1f1f;
+  border-bottom: 1px solid #333;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #fff;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+:host ::ng-deep .ant-modal-content {
+  background-color: #1f1f1f;
+}
+
+:host ::ng-deep .ant-modal-header {
+  background-color: #1f1f1f;
+  border-bottom: 1px solid #333;
+}
+
+:host ::ng-deep .ant-modal-title {
+  color: #fff;
+}
+
+:host ::ng-deep .ant-modal-close {
+  color: #fff;
+}
+
+:host ::ng-deep .ant-modal-close:hover {
+  color: #1890ff;
+} 

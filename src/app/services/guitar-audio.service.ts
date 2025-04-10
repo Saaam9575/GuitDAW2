@@ -4,242 +4,251 @@ import * as Tone from 'tone';
 
 export interface AudioDevice {
   id: string;
+  name: string;
   label: string;
+  type: 'input' | 'output';
   kind: 'audioinput' | 'audiooutput';
 }
 
+export interface EffectsChain {
+  input: Tone.InputNode;
+  output: Tone.OutputNode;
+}
+
 @Injectable({
-  providedIn: 'root',
+  providedIn: 'root'
 })
 export class GuitarAudioService {
-  public availableDevices$ = new BehaviorSubject<AudioDevice[]>([]);
-  public currentInputDevice$ = new BehaviorSubject<string>('');
-  public currentOutputDevice$ = new BehaviorSubject<string>('');
+  private availableDevicesSubject = new BehaviorSubject<AudioDevice[]>([]);
+  private currentInputDeviceSubject = new BehaviorSubject<string>('');
+  private currentOutputDeviceSubject = new BehaviorSubject<string>('');
+  private analyzer: Tone.Analyser;
+  private userMedia: Tone.UserMedia;
+  private masterVolume: Tone.Volume;
+  private masterPan: Tone.Panner;
+  private effects: Map<string, Tone.ToneAudioNode> = new Map();
+  effectsChain: EffectsChain | null = null;
 
-  private inputNode: Tone.UserMedia | null = null;
-  private outputNode: Tone.Gain | null = null;
-  private analyzer: Tone.Analyser | null = null;
-  private masterVolume: Tone.Volume | null = null;
-  private masterPan: Tone.Panner | null = null;
-
-  private effectChain: Map<string, Tone.ToneAudioNode> = new Map();
-  private effectOrder: string[] = [];
+  availableDevices$ = this.availableDevicesSubject.asObservable();
+  currentInputDevice$ = this.currentInputDeviceSubject.asObservable();
+  currentOutputDevice$ = this.currentOutputDeviceSubject.asObservable();
 
   constructor() {
-    this.initAudio();
+    this.userMedia = new Tone.UserMedia();
+    this.analyzer = new Tone.Analyser('waveform', 1024);
+    this.masterVolume = new Tone.Volume(0);
+    this.masterPan = new Tone.Panner(0);
+
+    // Chaîne de connexion initiale
+    this.userMedia.connect(this.masterVolume);
+    this.masterVolume.connect(this.masterPan);
+    this.masterPan.connect(this.analyzer);
+    this.analyzer.connect(Tone.getDestination());
   }
 
-  private async initAudio() {
+  async updateAvailableDevices() {
     try {
-      // Démarrer Tone.js
-      await Tone.start();
-
-      // Demander l'autorisation d'accès aux périphériques audio
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      console.log('Stream audio obtenu:', stream);
-
-      // Créer les noeuds audio de base
-      this.inputNode = new Tone.UserMedia();
-      console.log('Noeud UserMedia créé');
-
-      // Ouvrir avec le périphérique par défaut
-      await this.inputNode.open();
-      console.log('Périphérique par défaut ouvert');
-
-      this.outputNode = new Tone.Gain();
-
-      // Créer l'analyseur avec une taille de buffer plus grande
-      this.analyzer = new Tone.Analyser('waveform', 1024);
-
-      // Créer les contrôleurs de mix
-      this.masterVolume = new Tone.Volume(0);
-      this.masterPan = new Tone.Panner(0);
-
-      // Connexion de base
-      this.inputNode.connect(this.analyzer);
-      this.inputNode.connect(this.masterVolume);
-      this.masterVolume.connect(this.masterPan);
-      this.masterPan.connect(this.outputNode);
-      this.outputNode.toDestination();
-
-      // Mettre à jour la liste des périphériques
-      await this.updateAvailableDevices();
-
-      console.log('Service audio initialisé avec succès');
-    } catch (error) {
-      console.error("Erreur d'initialisation du service audio:", error);
-    }
-  }
-
-  public async updateAvailableDevices(): Promise<void> {
-    try {
-      // Vérifier si nous avons déjà l'autorisation
-      let stream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      } catch (error) {
-        console.error("Erreur lors de la demande d'autorisation:", error);
-        return;
-      }
-
-      // Énumérer les périphériques
       const devices = await navigator.mediaDevices.enumerateDevices();
-      console.log('Tous les périphériques:', devices);
-
-      const audioDevices = devices
-        .filter(
-          (device) =>
-            device.kind === 'audioinput' || device.kind === 'audiooutput'
-        )
-        .map((device) => ({
+      const audioDevices: AudioDevice[] = devices
+        .filter(device => device.kind === 'audioinput' || device.kind === 'audiooutput')
+        .map(device => ({
           id: device.deviceId,
-          label: device.label || `Périphérique ${device.kind}`,
-          kind: device.kind as 'audioinput' | 'audiooutput',
+          name: device.label || `${device.kind} (${device.deviceId})`,
+          label: device.label || `${device.kind} (${device.deviceId})`,
+          type: device.kind === 'audioinput' ? 'input' : 'output',
+          kind: device.kind as 'audioinput' | 'audiooutput'
         }));
 
-      console.log('Périphériques audio filtrés:', audioDevices);
-      this.availableDevices$.next(audioDevices);
-
-      // Si nous n'avons pas de périphérique d'entrée sélectionné, sélectionner le premier disponible
-      const inputDevices = audioDevices.filter((d) => d.kind === 'audioinput');
-      if (inputDevices.length > 0 && !this.currentInputDevice$.value) {
-        await this.selectInputDevice(inputDevices[0].id);
-      }
-
-      // Libérer le stream de test
-      stream.getTracks().forEach((track) => track.stop());
+      this.availableDevicesSubject.next(audioDevices);
     } catch (error) {
-      console.error(
-        'Erreur lors de la mise à jour des périphériques audio:',
-        error
-      );
-      this.availableDevices$.next([]);
+      console.error('Error enumerating devices:', error);
     }
   }
 
-  public async selectInputDevice(deviceId: string): Promise<void> {
+  async setInputDevice(deviceId: string) {
     try {
-      if (this.inputNode) {
-        console.log('Fermeture du périphérique actuel...');
-        await this.inputNode.close();
-
-        console.log('Ouverture du nouveau périphérique:', deviceId);
-        await this.inputNode.open(deviceId);
-        this.currentInputDevice$.next(deviceId);
-        console.log("Nouveau périphérique d'entrée sélectionné:", deviceId);
-
-        // Reconnecter le noeud d'entrée
-        this.rebuildEffectChain();
-      }
+      await this.userMedia.close();
+      await this.userMedia.open(deviceId);
+      this.currentInputDeviceSubject.next(deviceId);
+      
+      this.userMedia.connect(this.masterVolume);
+      this.reorderEffects(Array.from(this.effects.keys()));
     } catch (error) {
-      console.error(
-        "Erreur lors de la sélection du périphérique d'entrée:",
-        error
-      );
+      console.error('Error setting input device:', error);
+      throw error;
     }
   }
 
-  public selectOutputDevice(deviceId: string): void {
-    // Tone.js ne supporte pas directement le changement de périphérique de sortie
-    // Cela nécessiterait une implémentation personnalisée avec l'API Web Audio
-    console.log(
-      `Sélection du périphérique de sortie non supportée: ${deviceId}`
-    );
-    this.currentOutputDevice$.next(deviceId);
+  setOutputDevice(deviceId: string) {
+    this.currentOutputDeviceSubject.next(deviceId);
   }
 
-  public addEffect(effectId: string, effect: Tone.ToneAudioNode): void {
-    if (!this.masterVolume) return;
-
-    // Ajouter à notre map d'effets
-    this.effectChain.set(effectId, effect);
-    this.effectOrder.push(effectId);
-
-    // Reconstruire la chaîne d'effets
-    this.rebuildEffectChain();
+  getAnalyzer(): Tone.Analyser {
+    return this.analyzer;
   }
 
-  public removeEffectById(effectId: string): void {
-    if (this.effectChain.has(effectId)) {
-      this.effectChain.delete(effectId);
-      this.effectOrder = this.effectOrder.filter((id) => id !== effectId);
-      this.rebuildEffectChain();
+  setMasterVolume(value: number) {
+    this.masterVolume.volume.value = value;
+  }
+
+  setMasterPan(value: number) {
+    this.masterPan.pan.value = value;
+  }
+
+  addEffect(id: string, effect: Tone.ToneAudioNode) {
+    this.effects.set(id, effect);
+    this.reorderEffects(Array.from(this.effects.keys()));
+  }
+
+  removeEffectById(id: string) {
+    const effect = this.effects.get(id);
+    if (effect) {
+      effect.disconnect();
+      this.effects.delete(id);
+      this.reorderEffects(Array.from(this.effects.keys()));
     }
   }
 
-  public reorderEffects(newOrder: string[]): void {
-    // Vérifier que tous les IDs sont présents
-    if (
-      newOrder.length === this.effectOrder.length &&
-      newOrder.every((id) => this.effectChain.has(id))
-    ) {
-      this.effectOrder = [...newOrder];
-      this.rebuildEffectChain();
-    }
-  }
+  reorderEffects(effectIds: string[]) {
+    this.effects.forEach(effect => effect.disconnect());
 
-  private rebuildEffectChain(): void {
-    if (!this.inputNode || !this.masterVolume) return;
-
-    // Déconnecter tous les noeuds
-    this.inputNode.disconnect();
-
-    // Si aucun effet, connexion directe
-    if (this.effectOrder.length === 0) {
-      if (this.analyzer) {
-        this.inputNode.connect(this.analyzer);
-      }
-      this.inputNode.connect(this.masterVolume);
-      return;
-    }
-
-    // Sinon, construire la chaîne d'effets
-    let previousNode: Tone.ToneAudioNode = this.inputNode;
-
-    // Connecter l'entrée à l'analyseur en premier
-    if (this.analyzer) {
-      previousNode.connect(this.analyzer);
-    }
-
-    // Puis construire la chaîne d'effets
-    for (const effectId of this.effectOrder) {
-      const effect = this.effectChain.get(effectId);
+    let previousNode: Tone.ToneAudioNode = this.userMedia;
+    effectIds.forEach(id => {
+      const effect = this.effects.get(id);
       if (effect) {
         previousNode.connect(effect);
         previousNode = effect;
       }
-    }
+    });
 
-    // Connecter le dernier effet au volume
     previousNode.connect(this.masterVolume);
+
+    this.effectsChain = {
+      input: this.userMedia as unknown as Tone.InputNode,
+      output: this.masterVolume as unknown as Tone.OutputNode
+    };
   }
 
-  public setMasterVolume(value: number): void {
-    if (this.masterVolume) {
-      this.masterVolume.volume.value = 20 * Math.log10(value);
+  getEffectsChain(): EffectsChain {
+    return {
+      input: this.userMedia as unknown as Tone.InputNode,
+      output: this.masterVolume as unknown as Tone.OutputNode
+    };
+  }
+
+  /**
+   * Connecte la sortie de la chaîne d'effets à un nœud audio externe.
+   * Utilisé principalement pour l'enregistrement du son traité.
+   * @param destinationNode Le nœud de destination (AudioNode) à connecter
+   * @returns true si la connexion a réussi, false sinon
+   */
+  connectEffectsOutputTo(destinationNode: AudioNode): boolean {
+    try {
+      if (!this.masterVolume) {
+        console.error('MasterVolume n\'est pas initialisé');
+        return false;
+      }
+      
+      // Récupérer le nœud de sortie natif de Tone.js
+      const outputNode = this.masterVolume.output;
+      
+      // Connecter la sortie au nœud de destination
+      if (outputNode instanceof AudioNode) {
+        outputNode.connect(destinationNode);
+        console.log('Chaîne d\'effets connectée au nœud d\'enregistrement');
+        return true;
+      } else {
+        console.error('La sortie des effets n\'est pas un AudioNode');
+        return false;
+      }
+    } catch (error) {
+      console.error('Erreur lors de la connexion des effets à l\'enregistrement:', error);
+      return false;
     }
   }
-
-  public setMasterPan(value: number): void {
-    if (this.masterPan) {
-      this.masterPan.pan.value = value;
+  
+  /**
+   * Connecte un nœud audio externe à l'entrée de la chaîne d'effets
+   * et reconfigure la chaîne pour utiliser ce nœud comme source.
+   * @param sourceNode Le nœud source à connecter (AudioNode)
+   * @returns true si la connexion a réussi, false sinon
+   */
+  connectStreamToChain(sourceNode: AudioNode): boolean {
+    try {
+      // Déconnecter l'userMedia actuel
+      this.userMedia.disconnect();
+      
+      // Arrêter l'ancien microphone et en créer un nouveau
+      this.userMedia.close();
+      
+      // Spécial: forcer Tone.js à utiliser notre flux audio personnalisé
+      const audioContext = sourceNode.context;
+      
+      // Créer un nœud de gain pour s'assurer que le signal passe correctement
+      const bridgeNode = audioContext.createGain();
+      sourceNode.connect(bridgeNode);
+      
+      // Connecter directement ce nœud au premier effet de la chaîne
+      const effectIds = Array.from(this.effects.keys());
+      
+      if (effectIds.length > 0) {
+        // On va utiliser un hack technique pour faire fonctionner le routage
+        const toneContext = Tone.getContext();
+        
+        // Méthode 1: utiliser une UserMedia "fantôme" et remplacer sa source
+        const phantomMic = new Tone.UserMedia();
+        
+        // Méthode interne pour accéder au nœud natif via Tone.js
+        // @ts-ignore - Accès à une méthode privée/protégée
+        phantomMic._internalSource = bridgeNode;
+        
+        console.log('Source connectée à la chaîne d\'effets via un pont audio');
+        
+        // Connecter ce nœud au premier effet
+        this.reorderEffects(effectIds);
+        
+        // Remplacer notre userMedia par ce nouvel objet
+        // Référence pour la prochaine fois
+        this.userMedia = phantomMic;
+        
+        // Envoyer directement à la destination pour s'assurer que ça marche
+        this.masterVolume.toDestination();
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la connexion à la chaîne:', error);
+      return false;
     }
   }
-
-  public getAnalyzer(): Tone.Analyser | null {
-    return this.analyzer;
-  }
-
-  // Getters pour les observables
-  public get availableDevices() {
-    return this.availableDevices$.asObservable();
-  }
-
-  public get currentInputDevice() {
-    return this.currentInputDevice$.asObservable();
-  }
-
-  public get currentOutputDevice() {
-    return this.currentOutputDevice$.asObservable();
+  
+  /**
+   * Connecte directement le microphone aux effets et à la destination pour le monitoring.
+   * Cette méthode bypass complètement les nœuds Web Audio API et utilise uniquement Tone.js
+   * @returns true si la connexion a réussi, false sinon
+   */
+  connectInternalMicToEffects(): boolean {
+    try {
+      // Fermer l'ancien userMedia et en créer un nouveau
+      this.userMedia.close();
+      this.userMedia = new Tone.UserMedia();
+      
+      // Ouvrir le flux audio du microphone
+      this.userMedia.open().then(() => {
+        // Reconnecter à la chaîne d'effets
+        const effectIds = Array.from(this.effects.keys());
+        this.reorderEffects(effectIds);
+        
+        console.log('Microphone interne connecté directement à la chaîne d\'effets');
+      }).catch(e => {
+        console.error('Erreur lors de l\'ouverture du microphone:', e);
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Erreur lors de la connexion directe:', error);
+      return false;
+    }
   }
 }
+

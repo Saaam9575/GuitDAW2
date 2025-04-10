@@ -3,45 +3,23 @@
     <nz-header class="daw-header">
       <div class="header-content">
         <h1>Guitare DAW</h1>
-        <div class="transport-controls">
-          <button
-            nz-button
-            nzType="default"
-            (click)="startAudioContext()"
-            *ngIf="!isAudioContextStarted"
-          >
-            <span nz-icon nzType="play-circle"></span> Démarrer Audio
+        <div class="header-controls">
+          <button nz-button nzType="primary" (click)="startAudioContext()" [disabled]="isAudioContextStarted">
+            <i nz-icon nzType="play-circle"></i>
+            Start
           </button>
-          <span *ngIf="isAudioContextStarted" class="audio-status-ok">
-            <span nz-icon nzType="check-circle"></span> Audio Prêt
-          </span>
-
-          <button
-            nz-button
-            nzType="primary"
-            [disabled]="!isAudioContextStarted"
-            (click)="toggleAudioPlayback()"
-            class="control-button"
-          >
-            <span
-              nz-icon
-              [nzType]="isPlaying ? 'pause' : 'play-circle'"
-              nzTheme="outline"
-            ></span>
-            {{ isPlaying ? "Pause" : "Lecture" }}
-          </button>
-          <button nz-button [disabled]="!isAudioContextStarted">
-            <span nz-icon nzType="reload"></span>
-          </button>
-          <button
-            nz-button
-            nzType="primary"
-            (click)="showDeviceDrawer()"
-            [disabled]="!isAudioContextStarted"
-          >
-            <span nz-icon nzType="audio"></span>
+          <button nz-button nzType="default" (click)="showDeviceDrawer()">
+            <i nz-icon nzType="setting"></i>
             Périphériques
           </button>
+          <button nz-button nzType="default" (click)="guitarAudioService.updateAvailableDevices()">
+            <i nz-icon nzType="reload"></i>
+            Refresh
+          </button>
+        </div>
+        <div class="audio-status" *ngIf="isAudioContextStarted">
+          <i nz-icon nzType="check-circle" nzTheme="outline"></i>
+          Audio Prêt
         </div>
         <div class="audio-meter">
           <canvas #visualizer width="300" height="50"></canvas>
@@ -410,18 +388,90 @@
                         [(ngModel)]="visualizerType"
                         (ngModelChange)="updateVisualizerType()"
                       >
-                        <label nz-radio-button nzValue="waveform"
-                          >Forme d'onde</label
-                        >
-                        <label nz-radio-button nzValue="frequency"
-                          >Fréquences</label
-                        >
+                        <label nz-radio-button nzValue="waveform">Forme d'onde</label>
+                        <label nz-radio-button nzValue="frequency">Fréquences</label>
                       </nz-radio-group>
                     </div>
-                    <div class="visualizer-container">
-                      <canvas #mainVisualizer></canvas>
+                    <div class="main-visualizer-container">
+                      <canvas #mainVisualizer width="800" height="400"></canvas>
                     </div>
                   </nz-card>
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Effects">
+                <div class="effects-container">
+                  <!-- ... existing effects content ... -->
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Backing Track">
+                <div class="youtube-container">
+                  <div class="youtube-controls">
+                    <nz-input-group [nzSuffix]="suffixTemplate">
+                      <input nz-input [(ngModel)]="youtubeUrl" placeholder="Coller l'URL YouTube ici" (ngModelChange)="updateYoutubeEmbed()">
+                    </nz-input-group>
+                    <ng-template #suffixTemplate>
+                      <button nz-button nzType="primary" (click)="toggleFavorite(youtubeUrl)" [disabled]="!youtubeEmbedUrl">
+                        <span nz-icon [nzType]="isFavorite(youtubeUrl) ? 'heart' : 'heart-o'" nzTheme="fill"></span>
+                      </button>
+                    </ng-template>
+                    
+                    <div class="favorites-grid">
+                      <div *ngFor="let fav of favorites" class="favorite-item">
+                        <button 
+                          nz-button 
+                          nzType="default" 
+                          (click)="selectFavorite(fav.url)"
+                          class="favorite-button">
+                          <span nz-icon nzType="youtube" nzTheme="outline"></span>
+                          {{ fav.title }}
+                        </button>
+                        <button 
+                          nz-button 
+                          nzType="text" 
+                          nzDanger
+                          (click)="removeFavorite(fav.url)"
+                          class="remove-favorite-button">
+                          <span nz-icon nzType="delete"></span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="youtube-player" *ngIf="youtubeEmbedUrl">
+                    <iframe [src]="youtubeEmbedUrl | safeUrl" 
+                            frameborder="0" 
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                            allowfullscreen>
+                    </iframe>
+                  </div>
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Tabs">
+                <div class="tabs-container">
+                  <div class="search-container">
+                    <input nz-input [(ngModel)]="tabSearchQuery" placeholder="Rechercher une tablature...">
+                    <button nz-button nzType="primary" (click)="openSongsterrTab()">
+                      <i nz-icon nzType="search"></i>
+                      Rechercher
+                    </button>
+                  </div>
+                </div>
+              </nz-tab>
+
+              <nz-tab nzTitle="Recording">
+                <app-recording></app-recording>
+              </nz-tab>
+
+              <nz-tab nzTitle="BandLab Studio">
+                <div class="bandlab-container">
+                  <iframe
+                    [src]="'https://www.bandlab.com/login' | safeUrl"
+                    title="BandLab Studio"
+                    class="bandlab-frame"
+                    allow="camera; microphone"
+                  ></iframe>
                 </div>
               </nz-tab>
             </nz-tabset>
@@ -516,3 +566,302 @@
     <canvas #visualizer width="800" height="200"></canvas>
   </div>
 </div>
+
+<style>
+  .bandlab-container {
+    width: 100%;
+    height: calc(100vh - 200px);
+    padding: 20px;
+  }
+
+  .bandlab-frame {
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    border: 1px solid #333;
+    background: #1f1f1f;
+  }
+
+  .youtube-container {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    height: 100%;
+  }
+
+  .youtube-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .favorites-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .favorite-item {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .favorite-button {
+    flex: 1;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 8px 12px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #2a2a2a;
+  }
+
+  .remove-favorite-button {
+    padding: 8px;
+    color: #ff4d4f;
+  }
+
+  .remove-favorite-button:hover {
+    background: rgba(255, 77, 79, 0.2);
+  }
+
+  .youtube-player {
+    flex: 1;
+    position: relative;
+    padding-bottom: 56.25%; /* 16:9 Aspect Ratio */
+    height: 0;
+    overflow: hidden;
+  }
+
+  .youtube-player iframe {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+  }
+
+  .effect-chain {
+    margin-top: 20px;
+    padding: 15px;
+    background: #1f1f1f;
+    border-radius: 8px;
+  }
+
+  .effect-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .effect-box {
+    background: #2a2a2a;
+    border-radius: 4px;
+    padding: 10px;
+  }
+
+  .effect-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .effect-name {
+    flex: 1;
+    font-weight: 500;
+  }
+
+  .effect-params {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #3a3a3a;
+  }
+
+  .param-item {
+    margin-bottom: 10px;
+  }
+
+  .param-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #888;
+  }
+
+  .param-control {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .param-control nz-slider {
+    flex: 1;
+  }
+
+  .param-value {
+    min-width: 60px;
+    text-align: right;
+    color: #fff;
+    background: #333;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .visualizer-container {
+    width: 100%;
+    height: 200px;
+    margin-top: 20px;
+    background: #1f1f1f;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: #ffffff;
+    margin-bottom: 16px;
+  }
+
+  .effect-name {
+    color: #ffffff;
+    font-weight: 500;
+  }
+
+  .preset-header h3 {
+    color: #ffffff;
+    margin: 0;
+  }
+
+  :host ::ng-deep .ant-tabs-tab {
+    color: #ffffff !important;
+    opacity: 0.7;
+  }
+
+  :host ::ng-deep .ant-tabs-tab:hover {
+    color: #ffffff !important;
+    opacity: 1;
+  }
+
+  :host ::ng-deep .ant-tabs-tab.ant-tabs-tab-active {
+    color: #1890ff !important;
+    opacity: 1;
+  }
+
+  :host ::ng-deep .ant-tabs-ink-bar {
+    background: #1890ff !important;
+  }
+
+  :host ::ng-deep .ant-slider {
+    margin: 6px 0;
+  }
+
+  :host ::ng-deep .ant-slider-track {
+    background-color: #1890ff;
+  }
+
+  :host ::ng-deep .ant-slider-handle {
+    border-color: #1890ff;
+  }
+
+  :host ::ng-deep .ant-slider-rail {
+    background-color: #333;
+  }
+
+  .visualizer-content {
+    padding: 20px;
+  }
+
+  .visualizer-controls {
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+  }
+
+  .main-visualizer-container {
+    width: 100%;
+    height: 400px;
+    background: #1a1a1a;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .main-visualizer-container canvas {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+
+  :host ::ng-deep .ant-card {
+    background: #2a2a2a;
+    border: none;
+  }
+
+  :host ::ng-deep .ant-card-body {
+    padding: 24px;
+  }
+
+  :host ::ng-deep .ant-drawer-content {
+    background: #2a2a2a;
+  }
+
+  :host ::ng-deep .ant-drawer-header {
+    background: #333;
+    border-bottom: 1px solid #404040;
+  }
+
+  :host ::ng-deep .ant-drawer-title {
+    color: #fff;
+  }
+
+  :host ::ng-deep .device-selection {
+    padding: 20px;
+    background: #2a2a2a;
+  }
+
+  :host ::ng-deep .device-selection h3,
+  :host ::ng-deep .device-selection p {
+    color: #fff;
+    margin-bottom: 16px;
+  }
+
+  :host ::ng-deep .ant-select-selector {
+    background: #333 !important;
+    border-color: #404040 !important;
+  }
+
+  :host ::ng-deep .ant-select-selection-item {
+    color: #fff !important;
+  }
+
+  :host ::ng-deep .ant-select-arrow {
+    color: #fff;
+  }
+
+  :host ::ng-deep .permissions-note {
+    color: #fff;
+    background: #333;
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 20px;
+    border: 1px solid #404040;
+  }
+
+  :host ::ng-deep .ant-drawer-close {
+    color: #fff;
+  }
+
+  :host ::ng-deep .ant-drawer-close:hover {
+    color: #1890ff;
+    background: rgba(24, 144, 255, 0.1);
+  }
+</style>
